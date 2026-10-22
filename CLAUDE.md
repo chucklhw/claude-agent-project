@@ -20,6 +20,7 @@ Runtime config is read from `.env` via `dotenv`:
 - `WORK_DIRECTORY` — required; the source directory the agent inspects and edits (its `cwd`). The app exits on startup if it's unset or missing
 - `DEDUP_WINDOW_MS` — duplicate-suppression window (default `60000`)
 - `USER_DATA_DIR` — persistent browser profile directory (default `.browser-profile`, git-ignored)
+- `CONSOLE_TYPES` — comma-separated console message types to capture: `error` (default), `warning` (or `warn`), or `error,warning`. The app exits on startup if a value is invalid
 
 ## Architecture
 

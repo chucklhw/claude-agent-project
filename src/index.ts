@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import * as dotenv from 'dotenv';
-import { BrowserConsoleListener, type FrontendErrorPayload } from './browser/listener.js';
+import { BrowserConsoleListener, CONSOLE_LEVELS, type ConsoleLevel, type FrontendErrorPayload } from './browser/listener.js';
 import { ErrorDeduplicator } from './utils/deduplicator.js';
 import { RepairAgent } from './agent/repairAgent.js';
 
@@ -10,6 +10,17 @@ dotenv.config();
 const workDirectory = process.env.WORK_DIRECTORY;
 if (!workDirectory || !existsSync(workDirectory)) {
   console.error(`❌ WORK_DIRECTORY 未设置或目录不存在: ${workDirectory ?? '(未设置)'}`);
+  process.exit(1);
+}
+// Comma-separated console message types to capture, e.g. "error", "warning" or "error,warning" ("warn" is accepted)
+const consoleTypes = (process.env.CONSOLE_TYPES || 'error')
+  .split(',')
+  .map((t) => t.trim().toLowerCase())
+  .filter(Boolean)
+  .map((t) => (t === 'warn' ? 'warning' : t));
+const invalidTypes = consoleTypes.filter((t) => !CONSOLE_LEVELS.includes(t as ConsoleLevel));
+if (consoleTypes.length === 0 || invalidTypes.length > 0) {
+  console.error(`❌ CONSOLE_TYPES 无效: ${process.env.CONSOLE_TYPES}（可选值: ${CONSOLE_LEVELS.join(', ')}）`);
   process.exit(1);
 }
 const deduplicator = new ErrorDeduplicator(Number(process.env.DEDUP_WINDOW_MS) || 60_000);
@@ -30,6 +41,7 @@ const listener = new BrowserConsoleListener(
     browserName: (process.env.BROWSER || 'chrome').toLowerCase(),
     targetUrl: process.env.TARGET_URL || 'https://127.0.0.1:8080',
     userDataDir: process.env.USER_DATA_DIR || '.browser-profile',
+    consoleTypes: new Set(consoleTypes as ConsoleLevel[]),
   },
   handleError,
 );

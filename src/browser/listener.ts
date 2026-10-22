@@ -16,7 +16,11 @@ export interface ListenerOptions {
   browserName: string;
   targetUrl: string;
   userDataDir: string;
+  consoleTypes: ReadonlySet<ConsoleLevel>;
 }
+
+export type ConsoleLevel = 'error' | 'warning';
+export const CONSOLE_LEVELS: readonly ConsoleLevel[] = ['error', 'warning'];
 
 const SOURCE_PATTERN = /\/src\/|\.(tsx?|jsx?|vue)(\?|:|$|\s|\))/;
 const EXCLUDE_PATTERNS = [
@@ -117,20 +121,21 @@ export class BrowserConsoleListener {
   }
 
   private handleConsole(page: Page, msg: ConsoleMessage): void {
-    if (msg.type() !== 'error') return;
+    const type = msg.type();
+    if (!this.options.consoleTypes.has(type as ConsoleLevel)) return;
     const text = msg.text();
     const loc = msg.location();
     const locationText = loc.url ? `${loc.url}:${loc.lineNumber}:${loc.columnNumber}` : '';
 
     // console.error text often embeds the stack, so check both
     if (!isFrontendSourceError(text, `${locationText}\n${text}`)) {
-      console.log(`[已过滤][console.error] ${text.split('\n')[0]}`);
+      console.log(`[已过滤][console.${type}] ${text.split('\n')[0]}`);
       return;
     }
     const frame = firstSourceFrame(text) ?? (loc.url ? { filePath: loc.url, line: loc.lineNumber, column: loc.columnNumber } : undefined);
     this.emit({
       source: 'console',
-      name: 'ConsoleError',
+      name: type === 'warning' ? 'ConsoleWarning' : 'ConsoleError',
       message: text,
       stack: undefined,
       filePath: frame?.filePath,
