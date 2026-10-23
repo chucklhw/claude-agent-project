@@ -1,12 +1,6 @@
 name: Gemini AI Code Reviewer
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-    types: [opened, synchronize]
   issue_comment:
     types: [created]
 
