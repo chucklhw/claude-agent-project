@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FrontendErrorPayload } from '../browser/listener.js';
+import { debug } from './logger.js';
 
 interface Entry {
   lastProcessed: number;
@@ -24,12 +25,12 @@ export class ErrorDeduplicator {
 
     if (entry && now - entry.lastProcessed < this.windowMs) {
       entry.suppressed++;
-      console.log(`🔁 [去重] 已忽略重复错误 (${key.slice(0, 12)}), 窗口内累计 ${entry.suppressed} 次`);
+      debug(`🔁 [Dedup] Ignored duplicate error (${key.slice(0, 12)}), ${entry.suppressed} suppressed in this window`);
       return false;
     }
 
     if (entry?.suppressed) {
-      console.log(`📊 [去重] 错误 ${key.slice(0, 12)} 上个窗口内被忽略 ${entry.suppressed} 次`);
+      debug(`📊 [Dedup] Error ${key.slice(0, 12)} was suppressed ${entry.suppressed} times in the previous window`);
     }
     this.seen.set(key, { lastProcessed: now, suppressed: 0 });
     return true;

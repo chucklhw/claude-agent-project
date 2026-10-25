@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
 import type { FrontendErrorPayload } from '../browser/listener.js';
+import { debug } from '../utils/logger.js';
 
 const REPAIR_PROMPT = `You fix frontend runtime errors in a local project that the developer has open in IntelliJ IDEA. Your working directory is the project root.
 
@@ -12,7 +13,10 @@ Workflow:
 1. Locate the source file and read the code around the reported line.
 2. Determine the root cause.
 3. Propose the smallest correct fix. Do not edit anything until the developer approves the proposal.
-4. Once approved, apply exactly the proposed fix with Edit. Do not refactor, reformat or change unrelated code.`;
+4. Once approved, apply exactly the proposed fix with Edit. Do not refactor, reformat or change unrelated code.
+
+Rules:
+- Only change source code of the working project. Never edit third-party libraries (node_modules or any other vendored/installed dependency) or files outside the working directory; such edits are blocked. If the root cause is in a third-party library, say so and propose a change in the project's own code (e.g. a workaround or a corrected usage) instead, or propose no change.`;
 
 const PROPOSAL_PROMPTS = {
   fe: 'Propose a frontend code fix: the root cause, the file(s) to change and the exact change (before/after). If the cause is outside the frontend source (backend, environment, third-party library) or you are not confident, say so and propose no change.',
@@ -23,6 +27,13 @@ type FixTarget = keyof typeof PROPOSAL_PROMPTS;
 
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const EDIT_TOOLS = [...READ_TOOLS, 'Edit'];
+
+// Edits are only allowed in the working project's own source, never in third-party libraries
+function isProjectSource(workDirectory: string, filePath: string): boolean {
+  const relative = path.relative(workDirectory, path.resolve(workDirectory, filePath));
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
+  return !relative.split(path.sep).includes('node_modules');
+}
 
 function describeError(p: FrontendErrorPayload): string {
   return [
@@ -65,7 +76,7 @@ async function chooseFixTarget(): Promise<FixTarget> {
   rl.on('SIGINT', () => process.exit(130));
   try {
     for (;;) {
-      const answer = (await rl.question('🛠️  修复方式? [fe=前端代码 / data=数据库数据] ')).trim().toLowerCase();
+      const answer = (await rl.question('🛠️  Fix type? [fe=frontend code / data=database data] ')).trim().toLowerCase();
       if (answer === 'fe' || answer === 'data') return answer;
     }
   } finally {
@@ -76,11 +87,25 @@ async function chooseFixTarget(): Promise<FixTarget> {
 export class RepairAgent {
   constructor(private readonly workDirectory: string) {}
 
+  private readonly guardEdit: HookCallback = async (input) => {
+    if (input.hook_event_name !== 'PreToolUse') return {};
+    const filePath = (input.tool_input as { file_path?: unknown }).file_path;
+    if (typeof filePath === 'string' && isProjectSource(this.workDirectory, filePath)) return {};
+    console.warn(`🚫 [Agent] Blocked edit outside the project source: ${String(filePath)}`);
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'Only files in the working project may be edited; third-party libraries (node_modules) and files outside the working directory are off limits.',
+      },
+    };
+  };
+
   // Re-read on every run so edits to CLAUDE.md apply without a restart
   private async buildSystemPrompt(): Promise<string> {
     try {
       const claudeMd = await readFile(path.join(this.workDirectory, 'CLAUDE.md'), 'utf8');
-      console.log('📄 [Agent] 已加载 WORK_DIRECTORY/CLAUDE.md 作为系统提示');
+      debug('📄 [Agent] Loaded WORK_DIRECTORY/CLAUDE.md as system prompt');
       return `${REPAIR_PROMPT}\n\n# Project instructions (from CLAUDE.md)\n\n${claudeMd}`;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
@@ -100,6 +125,7 @@ export class RepairAgent {
         tools,
         allowedTools: tools,
         permissionMode: 'acceptEdits',
+        hooks: { PreToolUse: [{ matcher: 'Edit', hooks: [this.guardEdit] }] },
         model: 'claude-opus-5-5',
         effort: 'high',
         maxTurns: 30,
@@ -108,14 +134,14 @@ export class RepairAgent {
     })) {
       if (message.type === 'assistant') {
         for (const block of message.message.content) {
-          if (block.type === 'tool_use') console.log(`   🔧 ${block.name} ${JSON.stringify(block.input).slice(0, 200)}`);
+          if (block.type === 'tool_use') debug(`   🔧 ${block.name} ${JSON.stringify(block.input).slice(0, 200)}`);
         }
       } else if (message.type === 'result') {
         if (message.subtype === 'success') {
-          console.log(`✅ [Agent] 完成 (${message.num_turns} 轮, $${message.total_cost_usd.toFixed(4)})`);
+          debug(`✅ [Agent] Done (${message.num_turns} turns, $${message.total_cost_usd.toFixed(4)})`);
           return { sessionId: message.session_id, result: message.result };
         }
-        console.warn(`⚠️  [Agent] 未完成: ${message.subtype} ${message.errors.join('; ')}`);
+        console.warn(`⚠️  [Agent] Not completed: ${message.subtype} ${message.errors.join('; ')}`);
       }
     }
     return undefined;
@@ -123,30 +149,30 @@ export class RepairAgent {
 
   async fixError(payload: FrontendErrorPayload): Promise<void> {
     const description = describeError(payload);
-    console.log(`\n🐞 [浏览器控制台]\n${description}`);
-    if (!(await confirm('❓ 是否修复该错误? [y/n] '))) {
-      console.log('⏭️  [Agent] 已跳过\n');
+    console.log(`\n🐞 [Browser console]\n${description}`);
+    if (!(await confirm('❓ Fix this error? [y/n] '))) {
+      console.log('⏭️  [Agent] Skipped\n');
       return;
     }
     const target = await chooseFixTarget();
 
-    console.log(`🤖 [Agent] 开始分析: ${payload.name}: ${payload.message.split('\n')[0]}`);
+    console.log(`🤖 [Agent] Analysing: ${payload.name}: ${payload.message.split('\n')[0]}`);
     // Read-only tools: the agent can only propose until the plan is approved
     const proposal = await this.run(`${description}\n\n${PROPOSAL_PROMPTS[target]}`, READ_TOOLS);
     if (!proposal) return;
 
-    console.log(`\n📋 [Agent] 修复方案:\n${proposal.result}\n`);
-    if (!(await confirm('❓ 是否批准该方案? [y/n] '))) {
-      console.log('⏭️  [Agent] 方案未批准，已跳过\n');
+    console.log(`\n📋 [Agent] Proposed fix:\n${proposal.result}\n`);
+    if (!(await confirm('❓ Approve this proposal? [y/n] '))) {
+      console.log('⏭️  [Agent] Proposal not approved, skipped\n');
       return;
     }
     if (target === 'data') {
       // TODO: connect to the database and apply the approved data fix once DB tools are available
-      console.log('🗄️  [Agent] 数据库修复尚未实现，已跳过\n');
+      console.log('🗄️  [Agent] Database repair not yet implemented, skipped\n');
       return;
     }
 
-    console.log('🔧 [Agent] 开始修复');
+    console.log('🔧 [Agent] Applying fix');
     const applied = await this.run('Approved. Apply exactly the proposed fix now.', EDIT_TOOLS, proposal.sessionId);
     if (applied) console.log(`${applied.result}\n`);
   }

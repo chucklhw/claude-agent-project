@@ -4,12 +4,21 @@ import * as dotenv from 'dotenv';
 import { BrowserConsoleListener, CONSOLE_LEVELS, type ConsoleLevel, type FrontendErrorPayload } from './browser/listener.js';
 import { ErrorDeduplicator } from './utils/deduplicator.js';
 import { RepairAgent } from './agent/repairAgent.js';
+import { debug, LOG_LEVELS, setLogLevel, type LogLevel } from './utils/logger.js';
 
 dotenv.config();
 
+// "info" (default) prints only what is needed to fix an error; "debug" also prints what the app is doing
+const logLevel = (process.env['log.level'] || 'info').trim().toLowerCase();
+if (!LOG_LEVELS.includes(logLevel as LogLevel)) {
+  console.error(`❌ Invalid log.level: ${process.env['log.level']} (allowed values: ${LOG_LEVELS.join(', ')})`);
+  process.exit(1);
+}
+setLogLevel(logLevel as LogLevel);
+
 const workDirectory = process.env.WORK_DIRECTORY;
 if (!workDirectory || !existsSync(workDirectory)) {
-  console.error(`❌ WORK_DIRECTORY 未设置或目录不存在: ${workDirectory ?? '(未设置)'}`);
+  console.error(`❌ WORK_DIRECTORY is not set or does not exist: ${workDirectory ?? '(not set)'}`);
   process.exit(1);
 }
 // Comma-separated console message types to capture, e.g. "error", "warning" or "error,warning" ("warn" is accepted)
@@ -20,7 +29,7 @@ const consoleTypes = (process.env.CONSOLE_TYPES || 'error')
   .map((t) => (t === 'warn' ? 'warning' : t));
 const invalidTypes = consoleTypes.filter((t) => !CONSOLE_LEVELS.includes(t as ConsoleLevel));
 if (consoleTypes.length === 0 || invalidTypes.length > 0) {
-  console.error(`❌ CONSOLE_TYPES 无效: ${process.env.CONSOLE_TYPES}（可选值: ${CONSOLE_LEVELS.join(', ')}）`);
+  console.error(`❌ Invalid CONSOLE_TYPES: ${process.env.CONSOLE_TYPES} (allowed values: ${CONSOLE_LEVELS.join(', ')})`);
   process.exit(1);
 }
 const deduplicator = new ErrorDeduplicator(Number(process.env.DEDUP_WINDOW_MS) || 60_000);
@@ -33,7 +42,7 @@ function handleError(payload: FrontendErrorPayload): void {
   if (!deduplicator.shouldProcess(payload)) return;
   repairQueue = repairQueue
     .then(() => repairAgent.fixError(payload))
-    .catch((err) => console.error('❌ [Agent] 修复失败，继续监听:', err));
+    .catch((err) => console.error('❌ [Agent] Repair failed, continuing to listen:', err));
 }
 
 const listener = new BrowserConsoleListener(
@@ -46,8 +55,8 @@ const listener = new BrowserConsoleListener(
   handleError,
 );
 
-console.log(`📁 修复目标项目: ${path.resolve(workDirectory)}`);
+debug(`📁 Repair target project: ${path.resolve(workDirectory)}`);
 listener.start().catch((err) => {
-  console.error('启动失败:', err);
+  console.error('Startup failed:', err);
   process.exit(1);
 });

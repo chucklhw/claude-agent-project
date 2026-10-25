@@ -1,4 +1,5 @@
 import { chromium, firefox, webkit, type BrowserType, type ConsoleMessage, type Page } from 'playwright';
+import { debug } from '../utils/logger.js';
 
 export interface FrontendErrorPayload {
   source: 'pageerror' | 'console';
@@ -75,7 +76,7 @@ export class BrowserConsoleListener {
 
   async start(): Promise<void> {
     const { browserName, targetUrl, userDataDir } = this.options;
-    console.log(`🚀 正在启动浏览器: ${browserName} (有头模式, 配置目录: ${userDataDir})...`);
+    debug(`🚀 Launching browser: ${browserName} (headed, profile directory: ${userDataDir})...`);
 
     const context = await getBrowserType(browserName).launchPersistentContext(userDataDir, {
       headless: false,
@@ -85,16 +86,16 @@ export class BrowserConsoleListener {
     });
     context.on('page', (page) => this.attach(page));
     context.on('close', () => {
-      console.log('👋 浏览器已关闭，退出。');
+      console.log('👋 Browser closed, exiting.');
       process.exit(0);
     });
 
     const page = context.pages()[0] ?? (await context.newPage());
     this.attach(page);
 
-    console.log(`🔗 正在导航至: ${targetUrl}`);
+    debug(`🔗 Navigating to: ${targetUrl}`);
     await page.goto(targetUrl);
-    console.log('\n✅ 浏览器已就绪！请在浏览器中手动操作，前端源码错误将被捕获并交给修复 Agent。\n');
+    console.log('\n✅ Browser ready! Interact with the page manually; frontend source errors will be captured and passed to the repair agent.\n');
   }
 
   private attach(page: Page): void {
@@ -102,7 +103,7 @@ export class BrowserConsoleListener {
     page.on('pageerror', (error) => {
       const stack = error.stack ?? '';
       if (!isFrontendSourceError(error.message, stack)) {
-        console.log(`[已过滤][pageerror] ${error.message}`);
+        debug(`[Filtered][pageerror] ${error.message}`);
         return;
       }
       const frame = firstSourceFrame(stack);
@@ -129,7 +130,7 @@ export class BrowserConsoleListener {
 
     // console.error text often embeds the stack, so check both
     if (!isFrontendSourceError(text, `${locationText}\n${text}`)) {
-      console.log(`[已过滤][console.${type}] ${text.split('\n')[0]}`);
+      debug(`[Filtered][console.${type}] ${text.split('\n')[0]}`);
       return;
     }
     const frame = firstSourceFrame(text) ?? (loc.url ? { filePath: loc.url, line: loc.lineNumber, column: loc.columnNumber } : undefined);
@@ -148,7 +149,7 @@ export class BrowserConsoleListener {
 
   private emit(payload: FrontendErrorPayload): void {
     const where = payload.filePath ? ` @ ${payload.filePath}:${payload.line}:${payload.column}` : '';
-    console.error(`❌ [前端错误][${payload.source}] ${payload.name}: ${payload.message.split('\n')[0]}${where}`);
+    debug(`❌ [Frontend error][${payload.source}] ${payload.name}: ${payload.message.split('\n')[0]}${where}`);
     this.onError(payload);
   }
 }
