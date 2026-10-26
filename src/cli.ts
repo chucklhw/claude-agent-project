@@ -8,7 +8,7 @@ async function main(): Promise<void> {
   // In MCP mode stdout carries the MCP protocol, so all logging goes to stderr
   if (args.mode === 'mcp') console.log = console.info = console.debug = console.error;
   dotenv.config({ quiet: true });
-  const config = { ...loadConfig(process.env), ...(args.url && { targetUrl: args.url }) };
+  const config = { ...loadConfig(process.env, args.mode), ...(args.url && { targetUrl: args.url }) };
   setLogLevel(config.logLevel);
 
   // Imported per mode so MCP mode doesn't load the repair agent

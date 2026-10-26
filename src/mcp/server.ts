@@ -40,8 +40,9 @@ export function createMcpServer(session: BrowserSession, store: ErrorStore, defa
         const outcome = await session.open(target);
         return text(outcome === 'opened' ? `Browser opened, listening on ${target}` : `Switched to ${target}, listening for errors there`);
       } catch (e) {
+        if (session.isOpen()) return text(`Browser is open, but navigation to ${target} failed: ${messageOf(e)}`, true);
         return text(
-          `Failed to open browser: ${messageOf(e)}. If another browser-fix instance uses the same browser profile, close it or set USER_DATA_DIR to a different directory.`,
+          `Failed to open browser: ${messageOf(e)}. Check that the URL is reachable; if another browser-fix instance uses the same browser profile, close it or set USER_DATA_DIR to a different directory.`,
           true,
         );
       }
@@ -59,7 +60,8 @@ export function createMcpServer(session: BrowserSession, store: ErrorStore, defa
         return text(session.isOpen() ? 'No new frontend errors captured since the last call.' : 'Browser is not open. Call open_browser first.');
       }
       const header = `${errors.length} new error(s):${dropped > 0 ? ` (${dropped} older errors dropped)` : ''}`;
-      return text(`${header}\n\n${errors.map(describeError).join('\n\n---\n\n')}`);
+      const described = errors.map(({ error, occurrences }) => describeError(error) + (occurrences > 1 ? `\nOccurrences: ${occurrences}` : ''));
+      return text(`${header}\n\n${described.join('\n\n---\n\n')}`);
     },
   );
 

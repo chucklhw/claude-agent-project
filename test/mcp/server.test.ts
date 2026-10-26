@@ -21,15 +21,16 @@ function payload(message: string): FrontendErrorPayload {
   };
 }
 
-// Each created browser fails to start while `failStart` is set
+// Each created browser fails to start while `failStart` is set, and to navigate while `failGoto` is set
 function fakeBrowsers() {
-  const state = { failStart: undefined as Error | undefined, starts: 0, gotos: [] as string[] };
+  const state = { failStart: undefined as Error | undefined, failGoto: undefined as Error | undefined, starts: 0, gotos: [] as string[] };
   const factory = (_url: string, onClose: () => void): BrowserControl => ({
     async start() {
       state.starts++;
       if (state.failStart) throw state.failStart;
     },
     async goto(url) {
+      if (state.failGoto) throw state.failGoto;
       state.gotos.push(url);
     },
     async stop() {
@@ -138,4 +139,24 @@ test('openOnStartup never rejects, and open_browser can retry', async () => {
   assert.equal(session.isOpen(), false);
   state.failStart = undefined;
   assert.match((await call(client, 'open_browser')).text, /^Browser opened, listening on https:\/\/127\.0\.0\.1:8080/);
+});
+
+test('get_errors shows how often a buffered error repeated', async () => {
+  const { client, store } = await connect();
+  await call(client, 'open_browser');
+  for (let i = 0; i < 3; i++) store.add(payload('repeated boom'));
+  const { text } = await call(client, 'get_errors');
+  assert.match(text, /^1 new error\(s\):/);
+  assert.match(text, /Occurrences: 3/);
+});
+
+test('a failed URL switch reports a navigation failure and keeps the browser open', async () => {
+  const { client, session, state } = await connect();
+  await call(client, 'open_browser');
+  state.failGoto = new Error('net::ERR_NAME_NOT_RESOLVED');
+  const result = await call(client, 'open_browser', { url: 'http://unreachable.test' });
+  assert.equal(result.isError, true);
+  assert.match(result.text, /^Browser is open, but navigation to http:\/\/unreachable\.test failed: net::ERR_NAME_NOT_RESOLVED/);
+  assert.doesNotMatch(result.text, /USER_DATA_DIR/);
+  assert.equal(session.isOpen(), true);
 });

@@ -7,15 +7,19 @@ interface Entry {
   suppressed: number;
 }
 
+export function errorFingerprint(p: FrontendErrorPayload): string {
+  return createHash('sha256')
+    .update(`${p.name}|${p.message}|${p.filePath ?? ''}|${p.line ?? ''}`)
+    .digest('hex');
+}
+
 export class ErrorDeduplicator {
   private readonly seen = new Map<string, Entry>();
 
   constructor(private readonly windowMs = 60_000) {}
 
   fingerprint(p: FrontendErrorPayload): string {
-    return createHash('sha256')
-      .update(`${p.name}|${p.message}|${p.filePath ?? ''}|${p.line ?? ''}`)
-      .digest('hex');
+    return errorFingerprint(p);
   }
 
   shouldProcess(p: FrontendErrorPayload): boolean {

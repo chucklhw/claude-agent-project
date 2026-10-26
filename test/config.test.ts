@@ -55,3 +55,9 @@ test('loadWorkDirectory rejects an unset or missing directory', () => {
 test('loadWorkDirectory resolves an existing directory', () => {
   assert.equal(loadWorkDirectory({ WORK_DIRECTORY: os.tmpdir() }), path.resolve(os.tmpdir()));
 });
+
+test('loadConfig keeps the MCP browser profile out of the client project', () => {
+  assert.equal(loadConfig({}, 'mcp').userDataDir, path.join(os.homedir(), '.browser-fix', 'profile'));
+  assert.equal(loadConfig({ USER_DATA_DIR: 'custom' }, 'mcp').userDataDir, 'custom');
+  assert.equal(loadConfig({}, 'standalone').userDataDir, '.browser-profile');
+});

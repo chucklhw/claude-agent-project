@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { CONSOLE_LEVELS, type ConsoleLevel } from './browser/listener.js';
 import { LOG_LEVELS, type LogLevel } from './utils/logger.js';
@@ -40,7 +41,7 @@ export function parseArgs(args: readonly string[]): CliArgs {
   return result;
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
+export function loadConfig(env: NodeJS.ProcessEnv, mode: Mode = 'standalone'): AppConfig {
   // "info" (default) prints only what is needed to fix an error; "debug" also prints what the app is doing
   const logLevel = (env['log.level'] || 'info').trim().toLowerCase();
   if (!LOG_LEVELS.includes(logLevel as LogLevel)) {
@@ -60,7 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     logLevel: logLevel as LogLevel,
     browserName: (env.BROWSER || 'chrome').toLowerCase(),
     targetUrl: env.TARGET_URL || 'https://127.0.0.1:8080',
-    userDataDir: env.USER_DATA_DIR || '.browser-profile',
+    // MCP clients start the server in the user's project; keep the profile out of it
+    userDataDir: env.USER_DATA_DIR || (mode === 'mcp' ? path.join(os.homedir(), '.browser-fix', 'profile') : '.browser-profile'),
     consoleTypes: new Set(consoleTypes as ConsoleLevel[]),
     dedupWindowMs: Number(env.DEDUP_WINDOW_MS) || 60_000,
   };
