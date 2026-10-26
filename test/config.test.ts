@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { ConfigError, loadConfig, loadWorkDirectory, parseArgs } from './config.js';
+import { ConfigError, loadConfig, loadWorkDirectory, parseArgs } from '../src/config.js';
 
 const USAGE = /Usage: browser-fix \[--mcp\] \[--url <url>\]/;
 
