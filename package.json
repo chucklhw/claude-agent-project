@@ -1,12 +1,19 @@
 {
-  "name": "claude-agent-project",
+  "name": "browser-fix",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/cli.js",
+  "bin": {
+    "browser-fix": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx src/cli.ts",
+    "dev:mcp": "tsx src/cli.ts --mcp",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/cli.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [],

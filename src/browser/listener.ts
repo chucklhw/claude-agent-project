@@ -1,4 +1,4 @@
-import { chromium, firefox, webkit, type BrowserType, type ConsoleMessage, type Page } from 'playwright';
+import { chromium, firefox, webkit, type BrowserContext, type BrowserType, type ConsoleMessage, type Page } from 'playwright';
 import { debug } from '../utils/logger.js';
 
 export interface FrontendErrorPayload {
@@ -69,9 +69,12 @@ function firstSourceFrame(stack: string): { filePath: string; line: number; colu
 }
 
 export class BrowserConsoleListener {
+  private context: BrowserContext | undefined;
+
   constructor(
     private readonly options: ListenerOptions,
     private readonly onError: (payload: FrontendErrorPayload) => void,
+    private readonly onClose: () => void,
   ) {}
 
   async start(): Promise<void> {
@@ -84,18 +87,29 @@ export class BrowserConsoleListener {
       viewport: null,
       ...(browserName === 'chrome' ? { channel: 'chrome' } : {}),
     });
+    this.context = context;
     context.on('page', (page) => this.attach(page));
     context.on('close', () => {
-      console.log('👋 Browser closed, exiting.');
-      process.exit(0);
+      this.context = undefined;
+      this.onClose();
     });
 
     const page = context.pages()[0] ?? (await context.newPage());
     this.attach(page);
+    await this.goto(targetUrl);
+  }
 
-    debug(`🔗 Navigating to: ${targetUrl}`);
-    await page.goto(targetUrl);
-    console.log('\n✅ Browser ready! Interact with the page manually; frontend source errors will be captured and passed to the repair agent.\n');
+  // Navigates the first page; new pages are created when the user closed them all
+  async goto(url: string): Promise<void> {
+    if (!this.context) throw new Error('Browser is not open');
+    const page = this.context.pages()[0] ?? (await this.context.newPage());
+    debug(`🔗 Navigating to: ${url}`);
+    await page.goto(url);
+  }
+
+  // Closing the context fires onClose
+  async stop(): Promise<void> {
+    await this.context?.close();
   }
 
   private attach(page: Page): void {
