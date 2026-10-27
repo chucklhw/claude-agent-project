@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { query, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
+import { describeError } from '../browser/describe.js';
 import type { FrontendErrorPayload } from '../browser/listener.js';
 import { debug } from '../utils/logger.js';
 
@@ -33,18 +34,6 @@ function isProjectSource(workDirectory: string, filePath: string): boolean {
   const relative = path.relative(workDirectory, path.resolve(workDirectory, filePath));
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
   return !relative.split(path.sep).includes('node_modules');
-}
-
-function describeError(p: FrontendErrorPayload): string {
-  return [
-    `Source: ${p.source}`,
-    `Page: ${p.pageUrl}`,
-    `Error: ${p.name}: ${p.message}`,
-    p.filePath ? `Location: ${p.filePath}:${p.line}:${p.column}` : 'Location: unknown',
-    p.stack ? `Stack trace:\n${p.stack}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
 }
 
 // Wait for a single y/n keypress; other keys are ignored

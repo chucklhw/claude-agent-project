@@ -1,13 +1,20 @@
 {
-  "name": "claude-agent-project",
+  "name": "browser-fix",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/cli.js",
+  "bin": {
+    "browser-fix": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx src/cli.ts",
+    "dev:mcp": "tsx src/cli.ts --mcp",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node dist/cli.js",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
   },
   "keywords": [],
   "author": "",
@@ -16,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.287",
     "@anthropic-ai/sdk": "^0.129.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "playwright": "^1.63.0",
     "zod": "^4.6.5"
   },

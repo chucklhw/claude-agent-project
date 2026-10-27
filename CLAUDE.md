@@ -4,12 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- `npm run dev` — run `src/index.ts` directly via `tsx` (opens a headed browser)
+- `npm run dev` — run `src/cli.ts` in standalone mode via `tsx` (opens a headed browser); pass `-- --url <url>` to override `TARGET_URL`
+- `npm run dev:mcp` — run `src/cli.ts --mcp` (stdio MCP server)
 - `npm run build` — compile with `tsc` to `dist/`
-- `npm start` — run compiled `dist/index.js`
-- `npx tsc --noEmit` — type-check only
+- `npm start` — run compiled `dist/cli.js`
+- `npm test` — run `test/**/*.test.ts` with `node:test` via `tsx` (tests live in `test/`, mirroring `src/`)
+- `npx tsc --noEmit` — type-check `src/` only
 
-There is no test runner or linter configured (`npm test` is a placeholder that exits 1).
+There is no linter configured.
+
+## Modes
+
+The package is the CLI `browser-fix [--mcp] [--url <url>]` (`src/cli.ts`); the mode comes only from the flag, not from `.env`. `--url` overrides `TARGET_URL`.
+
+- **Standalone** (no `--mcp`, `src/standalone.ts`): the pipeline below, with the built-in repair agent and the console gates.
+- **MCP** (`--mcp`, `src/mcp/`): a stdio MCP server for Claude Code. It exposes `open_browser { url? }` (opens or switches the browser and clears errors from the previous URL), `get_errors` (drains the buffered errors) and `close_browser`, plus the prompts `open`, `fix_errors` and `close`, which Claude Code shows as slash commands that tell Claude to call those tools. Tool descriptions and the server `instructions` list example user phrases; they are how Claude decides when to call each tool, so keep them in step with the tools. With `--url` the browser opens at startup; without it, only on `open_browser`. `BrowserSession` serialises open/close against an in-progress launch and closes a browser whose launch failed, so it never holds the profile lock. `ErrorStore` deduplicates only against what is buffered (counting occurrences), so an error that recurs after `get_errors` is reported again; `DEDUP_WINDOW_MS` applies to standalone only. `USER_DATA_DIR` defaults to `~/.browser-fix/profile` in MCP mode, because the client starts the server in the user's project. Capture, filtering and dedup run locally; the server never calls the Claude API or pushes notifications, so tokens are only spent when Claude calls a tool. Nothing may be written to stdout except protocol messages: `cli.ts` redirects `console.log` to stderr and loads dotenv with `quiet: true`. `WORK_DIRECTORY` is not needed.
 
 ## Configuration
 
@@ -17,7 +26,7 @@ Runtime config is read from `.env` via `dotenv`:
 - `BROWSER` — `chrome` (default, uses system Chrome channel), `chromium`, `firefox`, `webkit`/`safari`
 - `TARGET_URL` — initial page to open (default `https://127.0.0.1:8080`)
 - `ANTHROPIC_API_KEY` — used by the repair agent
-- `WORK_DIRECTORY` — required; the source directory the agent inspects and edits (its `cwd`). The app exits on startup if it's unset or missing
+- `WORK_DIRECTORY` — required in standalone mode; the source directory the agent inspects and edits (its `cwd`). Standalone mode exits on startup if it's unset or missing
 - `DEDUP_WINDOW_MS` — duplicate-suppression window (default `60000`)
 - `USER_DATA_DIR` — persistent browser profile directory (default `.browser-profile`, git-ignored)
 - `CONSOLE_TYPES` — comma-separated console message types to capture: `error` (default), `warning` (or `warn`), or `error,warning`. The app exits on startup if a value is invalid
@@ -25,12 +34,12 @@ Runtime config is read from `.env` via `dotenv`:
 
 ## Architecture
 
-`prompt_specification.md` is the requirements spec. The app is a single pipeline:
+`prompt_specification.md` is the requirements spec. Config parsing lives in `src/config.ts`. Standalone mode is a single pipeline:
 
-1. **Listener** (`src/browser/listener.ts`) — `BrowserConsoleListener` opens a headed persistent context and captures `pageerror` and `console` errors on every page. Errors only pass if they reference frontend source (`/src/` or `.ts`/`.tsx`/`.js`/`.jsx`/`.vue`, ignoring `node_modules` frames) and don't match the network, CORS or favicon exclusions. Playwright reports 0-based line numbers; the payload's `line` is converted to 1-based, but the raw `stack` is not.
+1. **Listener** (`src/browser/listener.ts`) — `BrowserConsoleListener` opens a headed persistent context and captures `pageerror` and `console` errors on every page. Closing the window calls the `onClose` callback (standalone exits; MCP mode keeps running). Errors only pass if they reference frontend source (`/src/` or `.ts`/`.tsx`/`.js`/`.jsx`/`.vue`, ignoring `node_modules` frames) and don't match the network, CORS or favicon exclusions. Playwright reports 0-based line numbers; the payload's `line` is converted to 1-based, but the raw `stack` is not.
 2. **Deduplicator** (`src/utils/deduplicator.ts`) — `ErrorDeduplicator.shouldProcess()` fingerprints `SHA256(name|message|filePath|line)` and suppresses repeats within the window, counting how many were suppressed.
 3. **Repair agent** (`src/agent/repairAgent.ts`) — runs `@anthropic-ai/claude-agent-sdk`'s `query()` with `cwd: WORK_DIRECTORY`, read-only `Read`/`Grep`/`Glob` to propose a fix, then resumes the same session with `Edit` added to apply it once approved (see Console commands), `permissionMode: 'acceptEdits'` and `settingSources: []`. A `PreToolUse` hook denies any `Edit` outside `WORK_DIRECTORY` or inside `node_modules`; the prompt also tells the agent not to touch third-party libraries (no user or project settings are loaded). On every run it re-reads `WORK_DIRECTORY/CLAUDE.md`, if there is one, and appends it to the custom system prompt.
-4. **Orchestrator** (`src/index.ts`) — connects the three. Repairs are queued and run one at a time, and a failed repair is logged without stopping the listener.
+4. **Orchestrator** (`src/standalone.ts`) — connects the three. Repairs are queued and run one at a time, and a failed repair is logged without stopping the listener.
 
 ## Console commands
 
