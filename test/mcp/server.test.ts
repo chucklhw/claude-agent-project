@@ -67,6 +67,25 @@ test('lists the three tools', async () => {
   assert.deepEqual(tools.map((t) => t.name).sort(), ['close_browser', 'get_errors', 'open_browser']);
 });
 
+test('lists the slash-command prompts', async () => {
+  const { client } = await connect();
+  const { prompts } = await client.listPrompts();
+  assert.deepEqual(prompts.map((p) => p.name).sort(), ['close', 'fix_errors', 'open']);
+});
+
+async function promptText(client: Client, name: string, args: Record<string, string> = {}) {
+  const { messages } = await client.getPrompt({ name, arguments: args });
+  return messages.map((m) => (m.content.type === 'text' ? m.content.text : '')).join('\n');
+}
+
+test('prompts tell Claude which tool to call', async () => {
+  const { client } = await connect();
+  assert.match(await promptText(client, 'open', { url: 'http://localhost:5173' }), /open_browser tool with url http:\/\/localhost:5173/);
+  assert.doesNotMatch(await promptText(client, 'open'), /with url/);
+  assert.match(await promptText(client, 'fix_errors'), /get_errors tool/);
+  assert.match(await promptText(client, 'close'), /close_browser tool/);
+});
+
 test('get_errors reports a closed browser', async () => {
   const { client } = await connect();
   assert.equal((await call(client, 'get_errors')).text, 'Browser is not open. Call open_browser first.');

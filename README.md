@@ -33,6 +33,12 @@ Tools:
 - `get_errors` returns the errors captured since the last call.
 - `close_browser` closes the browser.
 
+Claude picks a tool from what you ask in plain words, e.g. "open the browser on localhost:5173", "I reproduced it, check the errors", "close the browser". For fixed commands that don't depend on wording, use the slash commands (prompts) the server adds, named after the server key in your config:
+
+- `/mcp__browser-debugger__open [url]` opens the browser.
+- `/mcp__browser-debugger__fix_errors` fetches the captured errors and fixes them.
+- `/mcp__browser-debugger__close` closes the browser.
+
 Listening, filtering and de-duplication run locally and use no Claude tokens. Tokens are only spent when Claude calls a tool. MCP mode doesn't need `WORK_DIRECTORY` or `ANTHROPIC_API_KEY`: Claude Code makes the fixes.
 
 `npx -y browser-fix` only works once the package is published to npm. Until then, build it (`npm run build`) and use `"command": "node", "args": ["<path to repo>/dist/cli.js", "--mcp", "--url", "<url>"]`.
