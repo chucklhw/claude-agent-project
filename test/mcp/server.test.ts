@@ -83,6 +83,7 @@ test('prompts tell Claude which tool to call', async () => {
   assert.match(await promptText(client, 'open', { url: 'http://localhost:5173' }), /open_browser tool with url http:\/\/localhost:5173/);
   assert.doesNotMatch(await promptText(client, 'open'), /with url/);
   assert.match(await promptText(client, 'fix_errors'), /get_errors tool/);
+  assert.match(await promptText(client, 'fix_errors'), /wait for the user to approve/);
   assert.match(await promptText(client, 'close'), /close_browser tool/);
 });
 

@@ -10,9 +10,13 @@ import type { ErrorStore } from './errorStore.js';
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string };
 
 const LOCATION_NOTE =
-  'Each error has a 1-based Location line; line numbers inside the raw stack trace are 0-based. Fix the cause in the user\'s project source, never in node_modules or other third-party libraries.';
+  'Each error has a 1-based Location line; line numbers inside the raw stack trace are 0-based. Locations are the URLs and positions of the code as the browser ran it, which can differ from the project\'s source files depending on the framework, bundler, dev server and source maps, so do not assume a path or line maps directly to a project file: find the source by searching for the identifiers, messages and code around the error, and if it cannot be identified with confidence, say so and ask the user instead of guessing. Fix the cause in the user\'s project source, never in node_modules or other third-party libraries.';
 
-const INSTRUCTIONS = `browser-fix (the browser fixer, or browser debugger) opens a headed browser on the user's local machine, listens to its console and collects frontend source errors, filtered and deduplicated locally. Call open_browser when the user asks to open the browser, or to use the browser fixer or debugger on a URL, then ask the user to reproduce the problem. Call get_errors when the user says they reproduced it or asks to check or fix the browser or console errors, and fix what it reports. Call close_browser when the user asks to close or stop the browser, or says they are done debugging. ${LOCATION_NOTE}`;
+// Keeps the standalone mode's approval gate: nothing is edited until the user approves a proposal
+const APPROVAL_NOTE =
+  'Before editing any file, propose a fix for each error (the source file and lines you identified and why, the cause, and the exact change) and wait for the user to approve it. Do not edit until they approve, and skip any fix they reject.';
+
+const INSTRUCTIONS = `browser-fix (the browser fixer, or browser debugger) opens a headed browser on the user's local machine, listens to its console and collects frontend source errors, filtered and deduplicated locally. Call open_browser when the user asks to open the browser, or to use the browser fixer or debugger on a URL, then ask the user to reproduce the problem. Call get_errors when the user says they reproduced it or asks to check or fix the browser or console errors, and propose fixes for what it reports. Call close_browser when the user asks to close or stop the browser, or says they are done debugging. ${APPROVAL_NOTE} ${LOCATION_NOTE}`;
 
 function text(message: string, isError = false): CallToolResult {
   return { content: [{ type: 'text', text: message }], ...(isError && { isError }) };
@@ -91,8 +95,8 @@ export function createMcpServer(session: BrowserSession, store: ErrorStore, defa
     { description: 'Open the browser fixer on a URL (default: TARGET_URL or --url)', argsSchema: { url: z.string().optional() } },
     ({ url }) => userPrompt(`Call the open_browser tool${url ? ` with url ${url}` : ''}, then ask me to reproduce the problem in the browser.`),
   );
-  server.registerPrompt('fix_errors', { description: 'Fetch the captured browser errors and fix them' }, () =>
-    userPrompt(`Call the get_errors tool and fix the reported errors in this project's source. ${LOCATION_NOTE}`),
+  server.registerPrompt('fix_errors', { description: 'Fetch the captured browser errors and propose fixes for approval' }, () =>
+    userPrompt(`Call the get_errors tool, find the cause of each reported error in this project's source and propose a fix. ${APPROVAL_NOTE} ${LOCATION_NOTE}`),
   );
   server.registerPrompt('close', { description: 'Close the browser fixer' }, () => userPrompt('Call the close_browser tool.'));
 
