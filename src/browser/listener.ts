@@ -1,5 +1,6 @@
 import { chromium, firefox, webkit, type BrowserContext, type BrowserType, type ConsoleMessage, type Page } from 'playwright';
 import { debug } from '../utils/logger.js';
+import { detectFramework, type FrameworkInfo } from './framework.js';
 
 export interface FrontendErrorPayload {
   source: 'pageerror' | 'console';
@@ -75,6 +76,7 @@ export class BrowserConsoleListener {
     private readonly options: ListenerOptions,
     private readonly onError: (payload: FrontendErrorPayload) => void,
     private readonly onClose: () => void,
+    private readonly onFramework: (info: FrameworkInfo) => void,
   ) {}
 
   async start(): Promise<void> {
@@ -114,6 +116,8 @@ export class BrowserConsoleListener {
 
   private attach(page: Page): void {
     page.on('console', (msg) => this.handleConsole(page, msg));
+    // Fires on every navigation and reload of the page
+    page.on('load', () => void this.detect(page));
     page.on('pageerror', (error) => {
       const stack = error.stack ?? '';
       if (!isFrontendSourceError(error.message, stack)) {
@@ -159,6 +163,16 @@ export class BrowserConsoleListener {
       pageUrl: page.url(),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  private async detect(page: Page): Promise<void> {
+    if (!/^https?:/.test(page.url())) return;
+    try {
+      this.onFramework(await detectFramework(page));
+    } catch (e) {
+      // A newer load replaces this one and runs its own detection
+      debug(`[Framework] Detection on ${page.url()} interrupted: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private emit(payload: FrontendErrorPayload): void {

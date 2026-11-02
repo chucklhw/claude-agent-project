@@ -15,7 +15,7 @@ test('the --mcp server speaks MCP over stdio and exits when the client disconnec
   await client.connect(transport);
 
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), ['close_browser', 'get_errors', 'open_browser']);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ['close_browser', 'get_errors', 'get_framework_info', 'open_browser']);
 
   const result = await client.callTool({ name: 'get_errors', arguments: {} });
   assert.deepEqual(result.content, [{ type: 'text', text: 'Browser is not open. Call open_browser first.' }]);

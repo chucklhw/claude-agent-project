@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult, GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { describeError } from '../browser/describe.js';
+import { baseUrl, describeFramework, type FrameworkInfo } from '../browser/framework.js';
 import type { BrowserSession } from './browserSession.js';
 import type { ErrorStore } from './errorStore.js';
 
@@ -16,7 +17,7 @@ const LOCATION_NOTE =
 const APPROVAL_NOTE =
   'Before editing any file, propose a fix for each error (the source file and lines you identified and why, the cause, and the exact change) and wait for the user to approve it. Do not edit until they approve, and skip any fix they reject.';
 
-const INSTRUCTIONS = `browser-fix (the browser fixer, or browser debugger) opens a headed browser on the user's local machine, listens to its console and collects frontend source errors, filtered and deduplicated locally. Call open_browser when the user asks to open the browser, or to use the browser fixer or debugger on a URL, then ask the user to reproduce the problem. Call get_errors when the user says they reproduced it or asks to check or fix the browser or console errors, and propose fixes for what it reports. Call close_browser when the user asks to close or stop the browser, or says they are done debugging. ${APPROVAL_NOTE} ${LOCATION_NOTE}`;
+const INSTRUCTIONS = `browser-fix (the browser fixer, or browser debugger) opens a headed browser on the user's local machine, listens to its console and collects frontend source errors, filtered and deduplicated locally. Call open_browser when the user asks to open the browser, or to use the browser fixer or debugger on a URL, then ask the user to reproduce the problem. Call get_errors when the user says they reproduced it or asks to check or fix the browser or console errors, and propose fixes for what it reports. Call get_framework_info when the user asks which frontend framework or version a page uses or whether it runs in dev mode, or when knowing that helps locate an error's source. Call close_browser when the user asks to close or stop the browser, or says they are done debugging. ${APPROVAL_NOTE} ${LOCATION_NOTE}`;
 
 function text(message: string, isError = false): CallToolResult {
   return { content: [{ type: 'text', text: message }], ...(isError && { isError }) };
@@ -30,7 +31,12 @@ function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function createMcpServer(session: BrowserSession, store: ErrorStore, defaultUrl: string): McpServer {
+export function createMcpServer(
+  session: BrowserSession,
+  store: ErrorStore,
+  frameworks: ReadonlyMap<string, FrameworkInfo>,
+  defaultUrl: string,
+): McpServer {
   const server = new McpServer({ name: 'browser-fix', version }, { instructions: INSTRUCTIONS });
 
   server.registerTool(
@@ -74,6 +80,23 @@ export function createMcpServer(session: BrowserSession, store: ErrorStore, defa
   );
 
   server.registerTool(
+    'get_framework_info',
+    {
+      description:
+        'Return the frontend framework, its version and whether the page runs in dev mode, as detected when a page last loaded or was refreshed in the browser (only Vue 2 and Vue 3 are detected). Results are kept per base URL (scheme, host and port). Call this when the user asks which framework or version a page uses or whether it runs in dev mode, e.g. "which Vue version is this page using", "is localhost:5173 running in dev mode", "what framework does this app use". Without url, returns every base URL detected so far.',
+      inputSchema: { url: z.url().optional() },
+    },
+    async ({ url }) => {
+      if (url) {
+        const info = frameworks.get(baseUrl(url));
+        return text(info ? describeFramework(info) : `No framework info for ${baseUrl(url)} yet. It is detected when a page there loads in the browser opened by open_browser.`);
+      }
+      if (frameworks.size === 0) return text('No framework info detected yet. Call open_browser and let a page load first.');
+      return text([...frameworks.values()].map(describeFramework).join('\n\n---\n\n'));
+    },
+  );
+
+  server.registerTool(
     'close_browser',
     {
       description:
@@ -97,6 +120,11 @@ export function createMcpServer(session: BrowserSession, store: ErrorStore, defa
   );
   server.registerPrompt('fix_errors', { description: 'Fetch the captured browser errors and propose fixes for approval' }, () =>
     userPrompt(`Call the get_errors tool, find the cause of each reported error in this project's source and propose a fix. ${APPROVAL_NOTE} ${LOCATION_NOTE}`),
+  );
+  server.registerPrompt(
+    'framework_info',
+    { description: 'Show the detected frontend framework, version and dev mode (optionally for one URL)', argsSchema: { url: z.string().optional() } },
+    ({ url }) => userPrompt(`Call the get_framework_info tool${url ? ` with url ${url}` : ''} and summarise the result.`),
   );
   server.registerPrompt('close', { description: 'Close the browser fixer' }, () => userPrompt('Call the close_browser tool.'));
 

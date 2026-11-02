@@ -1,3 +1,4 @@
+import { describeFramework } from './browser/framework.js';
 import { BrowserConsoleListener, type FrontendErrorPayload } from './browser/listener.js';
 import { ErrorDeduplicator } from './utils/deduplicator.js';
 import { RepairAgent } from './agent/repairAgent.js';
@@ -19,10 +20,15 @@ export async function runStandalone(config: AppConfig, workDirectory: string): P
       .catch((err) => console.error('❌ [Agent] Repair failed, continuing to listen:', err));
   }
 
-  const listener = new BrowserConsoleListener(config, handleError, () => {
-    console.log('👋 Browser closed, exiting.');
-    process.exit(0);
-  });
+  const listener = new BrowserConsoleListener(
+    config,
+    handleError,
+    () => {
+      console.log('👋 Browser closed, exiting.');
+      process.exit(0);
+    },
+    (info) => console.log(`\n🔎 [Framework]\n${describeFramework(info)}\n`),
+  );
 
   debug(`📁 Repair target project: ${workDirectory}`);
   await listener.start();
