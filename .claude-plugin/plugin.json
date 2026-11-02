@@ -1,0 +1,10 @@
+{
+  "name": "browser-fix",
+  "version": "1.0.0",
+  "description": "Opens a headed browser, captures frontend source errors from its console and lets Claude Code fix them",
+  "author": {
+    "name": "chucklhw"
+  },
+  "repository": "https://github.com/chucklhw/claude-agent-project",
+  "keywords": ["browser", "console", "errors", "debugging", "playwright", "mcp"]
+}

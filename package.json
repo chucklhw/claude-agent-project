@@ -13,6 +13,7 @@
     "dev": "tsx src/cli.ts",
     "dev:mcp": "tsx src/cli.ts --mcp",
     "build": "tsc",
+    "prepare": "npm run build",
     "start": "node dist/cli.js",
     "test": "node --import tsx --test \"test/**/*.test.ts\""
   },
@@ -24,12 +25,12 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.287",
     "@anthropic-ai/sdk": "^0.129.0",
     "@modelcontextprotocol/sdk": "^1.31.0",
+    "dotenv": "^18.0.9",
     "playwright": "^1.63.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.19.0",
-    "dotenv": "^18.0.4",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

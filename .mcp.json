@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "browser-fix": {
+      "command": "npx",
+      "args": ["-y", "github:chucklhw/claude-agent-project#v1.0.0", "--mcp"]
+    }
+  }
+}

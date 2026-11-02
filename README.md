@@ -10,6 +10,23 @@ npx browser-fix [--url <url>]
 
 Opens a Playwright browser on `--url` (or `TARGET_URL`) and runs the built-in repair agent on each captured error. Every repair is gated by console prompts. `WORK_DIRECTORY` (the project to fix) and `ANTHROPIC_API_KEY` must be set in `.env`.
 
+## Claude Code plugin
+
+Install it from the [lhw-plugins](https://github.com/chucklhw/lhw-plugins) marketplace:
+
+```
+/plugin install browser-fix --marketplace chucklhw/lhw-plugins
+```
+
+On Claude Code older than 2.1.275, add the marketplace first:
+
+```
+/plugin marketplace add chucklhw/lhw-plugins
+/plugin install browser-fix@lhw-plugins
+```
+
+The plugin starts the MCP server below with `npx -y github:chucklhw/claude-agent-project#v<version> --mcp`, which installs and builds it from the git tag matching the plugin version. Both repos are private, so you need read access to them and git credentials for GitHub.
+
 ## MCP server for Claude Code
 
 Add this to your MCP configuration, e.g. `.mcp.json` in your project:
@@ -41,7 +58,7 @@ Claude picks a tool from what you ask in plain words, e.g. "open the browser on 
 
 Listening, filtering and de-duplication run locally and use no Claude tokens. Tokens are only spent when Claude calls a tool. MCP mode doesn't need `WORK_DIRECTORY` or `ANTHROPIC_API_KEY`: Claude Code makes the fixes.
 
-`npx -y browser-fix` only works once the package is published to npm. Until then, build it (`npm run build`) and use `"command": "node", "args": ["<path to repo>/dist/cli.js", "--mcp", "--url", "<url>"]`.
+`npx -y browser-fix` only works once the package is published to npm. Until then, use `"args": ["-y", "github:chucklhw/claude-agent-project", "--mcp", ...]`, or build it (`npm run build`) and use `"command": "node", "args": ["<path to repo>/dist/cli.js", "--mcp", "--url", "<url>"]`.
 
 ## Configuration (`.env`)
 
